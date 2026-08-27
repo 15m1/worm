@@ -251,7 +251,6 @@ export const useStore = create<StoreState>((set, get) => {
             return true
           })
           .map((q: Question) => ({
-            ...newReviewState(),
             ...q,
             wrong: q.wrong ?? false,
             important: q.important ?? false,

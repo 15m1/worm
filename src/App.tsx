@@ -30,8 +30,14 @@ const NAV: { id: Page; label: string; icon: (s: number) => ReactElement }[] = [
   { id: 'settings', label: '设置', icon: (s) => <IconSettings size={s} /> },
 ]
 
+const PAGE_KEY = 'app:page'
+
 function Shell() {
-  const [page, setPage] = useState<Page>('dashboard')
+  // 刷新后停留在上次浏览的页面
+  const [page, setPage] = useState<Page>(() => {
+    const saved = localStorage.getItem(PAGE_KEY)
+    return saved && NAV.some((n) => n.id === saved) ? (saved as Page) : 'dashboard'
+  })
   const hydrate = useStore((s) => s.hydrate)
   const hydrated = useStore((s) => s.hydrated)
   const questions = useStore((s) => s.questions)
@@ -64,6 +70,7 @@ function Shell() {
 
   const go = (p: string) => {
     setPage(p as Page)
+    localStorage.setItem(PAGE_KEY, p)
     document.querySelector('.main')?.scrollTo({ top: 0 })
   }
 

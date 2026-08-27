@@ -60,17 +60,17 @@ export default function Quiz() {
   useEffect(() => {
     if (!session || timeLimit === 0 || revealed || !current) return
     setTimerLeft(timeLimit)
+    // 用局部变量倒数，超时逻辑放在 interval 回调而非 setState updater 内，
+    // 避免被 React 双调用（updater 必须是纯函数）
+    let left = timeLimit
     const iv = setInterval(() => {
-      setTimerLeft((t) => {
-        if (t === null) return t
-        if (t <= 1) {
-          clearInterval(iv)
-          // 超时按答错处理
-          answer(false, true)
-          return 0
-        }
-        return t - 1
-      })
+      left -= 1
+      setTimerLeft(left)
+      if (left <= 0) {
+        clearInterval(iv)
+        // 超时按答错处理
+        answer(false, true)
+      }
     }, 1000)
     return () => clearInterval(iv)
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -167,12 +167,13 @@ export default function Questions() {
     )
   }
 
-  const doBatch = (fn: () => void, msg: string) => {
+  // fn 返回 false 表示用户取消了确认，此时不提示成功、保留选择
+  const doBatch = (fn: () => boolean, msg: string) => {
     if (selected.size === 0) {
       toast('请先选择题目', 'err')
       return
     }
-    fn()
+    if (!fn()) return
     toast(msg)
     setSelected(new Set())
   }
@@ -421,29 +422,31 @@ export default function Questions() {
           <div style={{ flex: 1 }} />
           <button
             className="btn btn-ghost btn-sm"
-            onClick={() => doBatch(() => batchSet(Array.from(selected), { isFavorite: true }), `已收藏 ${selected.size} 题`)}
+            onClick={() => doBatch(() => { batchSet(Array.from(selected), { isFavorite: true }); return true }, `已收藏 ${selected.size} 题`)}
           >
             收藏
           </button>
           <button
             className="btn btn-ghost btn-sm"
-            onClick={() => doBatch(() => batchSet(Array.from(selected), { important: true }), `已标记 ${selected.size} 题为重点`)}
+            onClick={() => doBatch(() => { batchSet(Array.from(selected), { important: true }); return true }, `已标记 ${selected.size} 题为重点`)}
           >
             🚩 标记重点
           </button>
           <button
             className="btn btn-ghost btn-sm"
-            onClick={() => doBatch(() => batchSet(Array.from(selected), { wrong: true }), `已加入错题本 ${selected.size} 题`)}
+            onClick={() => doBatch(() => { batchSet(Array.from(selected), { wrong: true }); return true }, `已加入错题本 ${selected.size} 题`)}
           >
             加入错题本
           </button>
           <button
             className="btn btn-danger btn-sm"
             onClick={() =>
-              doBatch(() => {
-                if (confirm(`确定删除选中的 ${selected.size} 道题？此操作不可恢复。`)) batchDelete(Array.from(selected))
-              }, `已删除 ${selected.size} 题`)
-            }
+                doBatch(() => {
+                  if (!confirm(`确定删除选中的 ${selected.size} 道题？此操作不可恢复。`)) return false
+                  batchDelete(Array.from(selected))
+                  return true
+                }, `已删除 ${selected.size} 题`)
+              }
           >
             <IconTrash size={15} /> 删除
           </button>

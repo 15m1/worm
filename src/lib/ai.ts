@@ -1,5 +1,5 @@
 import type { ApiConfig, Difficulty } from '../types'
-import { categoryDef } from '../types'
+import { categoryDef, CATEGORIES } from '../types'
 
 export interface AiQuestion {
   title: string
@@ -129,6 +129,136 @@ export async function generateQuestions(
   const parsed = parseQuestions(content, opts.category)
   if (parsed.length === 0) throw new Error('没有解析到有效题目')
   return parsed
+}
+
+/** 从 Markdown 文档/笔记中提取问答，整理为题库格式（由 AI 识别内容） */
+export async function extractQuestions(
+  config: ApiConfig,
+  markdown: string,
+  opts: { signal?: AbortSignal } = {},
+): Promise<AiQuestion[]> {
+  const baseUrl = (config.baseUrl || 'https://api.deepseek.com').replace(/\/+$/, '')
+  // 防止超长文档撑爆上下文、减少等待时间，截断到约 2 万字符
+  const MAX = 20000
+  const truncated = markdown.length > MAX
+  const content = truncated ? markdown.slice(0, MAX) : markdown
+
+  const categoryList = CATEGORIES.map((c) => `${c.id}（${c.name}）`).join(' / ')
+
+  const systemPrompt = `你是一名资深的 Java 后端面试官。用户会提供一份 Markdown 格式的笔记/文档/题面内容。
+请仔细阅读内容，从中提取出所有可以作为面试题的问答知识点，整理为题库条目。
+严格只输出一个 JSON 数组，不要输出任何其他文字或 markdown 代码块标记。
+数组每个元素格式为：{"title": "问题标题", "answer": "参考答案（要点化、清晰，可用 markdown）", "category": "分类id", "difficulty": "简单|中等|困难", "tags": ["标签1","标签2"]}
+category 必须从以下分类 id 中选择最匹配的一个：${categoryList}
+要求：
+- 只提取文档中确实有对应答案/知识点的内容，不要自己编造新题目
+- 若文档中的知识点缺少答案描述，可基于文档上下文简要补全，但不得引入文档外的内容
+- 同一知识点只保留一条，去重合并`
+
+  const userPrompt = `请从以下 Markdown 内容中提取面试题问答：\n\n${content}${truncated ? '\n\n（注：内容过长已截断，仅提取以上部分）' : ''}`
+
+  let resp: Response
+  try {
+    resp = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${config.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: config.model || 'deepseek-chat',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        temperature: 0.3,
+        stream: false,
+      }),
+      signal: opts.signal,
+    })
+  } catch (e) {
+    if (opts.signal?.aborted) throw e
+    throw new Error(
+      '网络请求失败。若提示跨域(CORS)，说明该接口不允许浏览器直连，请改用支持浏览器调用的服务，或通过本地代理转发',
+    )
+  }
+
+  if (!resp.ok) {
+    let msg = `请求失败（HTTP ${resp.status}）`
+    try {
+      const err = await resp.json()
+      msg = err?.error?.message ?? msg
+    } catch {
+      // ignore
+    }
+    throw new Error(msg)
+  }
+
+  const data = await resp.json()
+  const text: string = data?.choices?.[0]?.message?.content ?? ''
+  if (!text) throw new Error('AI 没有返回内容')
+  const parsed = parseQuestions(text, 'java')
+  if (parsed.length === 0) throw new Error('没有从文档中识别到有效的问答内容')
+  return parsed
+}
+
+/** 按标题边界把 Markdown 切成块（每块不超过 maxChars），返回块数组 */
+export function splitMarkdown(markdown: string, maxChars = 15000): string[] {
+  if (markdown.length <= maxChars) return [markdown]
+  const lines = markdown.split('\n')
+  const blocks: string[] = []
+  let current: string[] = []
+  let currentLen = 0
+  // 遇到一级/二级标题且当前块已较长时切块
+  for (const line of lines) {
+    const isHeading = /^#{1,2}\s/.test(line)
+    if (isHeading && currentLen > maxChars * 0.6) {
+      if (currentLen > 0) blocks.push(current.join('\n'))
+      current = []
+      currentLen = 0
+    }
+    current.push(line)
+    currentLen += line.length + 1
+    // 无标题的长文档：按硬长度切
+    if (currentLen >= maxChars) {
+      blocks.push(current.join('\n'))
+      current = []
+      currentLen = 0
+    }
+  }
+  if (current.length > 0) blocks.push(current.join('\n'))
+  return blocks.filter((b) => b.trim().length > 0)
+}
+
+/** 分批识别长文档：逐块调用 AI 提取问答并合并去重，onProgress 汇报进度（第 x 批 / 共 y 批） */
+export async function extractQuestionsBatched(
+  config: ApiConfig,
+  markdown: string,
+  opts: { signal?: AbortSignal; onProgress?: (done: number, total: number) => void } = {},
+): Promise<AiQuestion[]> {
+  const blocks = splitMarkdown(markdown)
+  const all: AiQuestion[] = []
+  const seen = new Set<string>()
+  for (let i = 0; i < blocks.length; i++) {
+    opts.onProgress?.(i + 1, blocks.length)
+    let batch: AiQuestion[]
+    try {
+      batch = await extractQuestions(config, blocks[i], { signal: opts.signal })
+    } catch (e) {
+      // 中间某批失败不终止整体，跳过该批继续
+      if (opts.signal?.aborted) throw e
+      if (i === blocks.length - 1 && all.length === 0) throw e
+      continue
+    }
+    for (const q of batch) {
+      const key = q.title.trim()
+      if (seen.has(key)) continue
+      seen.add(key)
+      all.push(q)
+    }
+  }
+  if (all.length === 0) throw new Error('没有从文档中识别到有效的问答内容')
+  return all
 }
 
 /** 针对单道题目，基于现有答案生成更完整、更适合复习背诵的参考答案（markdown） */
