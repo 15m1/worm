@@ -1,8 +1,8 @@
 import { useRef, useState } from 'react'
 import { useStore } from '../store/useStore'
 import { CATEGORIES, categoryDef, type Difficulty } from '../types'
-import { extractQuestionsBatched, generateQuestions, type AiQuestion } from '../lib/ai'
-import { IconSpark, IconCheck, IconDownload } from '../components/icons'
+import { extractFolderBatched, extractQuestionsBatched, generateQuestions, type AiQuestion } from '../lib/ai'
+import { IconSpark, IconCheck, IconDownload, IconFolder } from '../components/icons'
 import { useToast } from '../components/Toast'
 
 const COUNTS = [3, 5, 8, 10]
@@ -26,8 +26,11 @@ export default function AiGenerate({ go }: { go: (page: string) => void }) {
 
   const abortRef = useRef<AbortController | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const folderRef = useRef<HTMLInputElement>(null)
 
   const hasApi = !!settings.api.apiKey.trim()
+  // 是否为 MD / 文件夹导入（区别于 AI 直接生成）
+  const isMdImport = sourceLabel.startsWith('MD 导入') || sourceLabel.startsWith('文件夹导入')
 
   const doGenerate = async () => {
     if (!hasApi) {
@@ -82,6 +85,39 @@ export default function AiGenerate({ go }: { go: (page: string) => void }) {
     abortRef.current = controller
     try {
       const items = await extractQuestionsBatched(settings.api, text, {
+        signal: controller.signal,
+        onProgress: (done, total) => setProgress({ done, total }),
+      })
+      setResults(items)
+      setSelected(new Set(items.map((_, i) => i)))
+      toast(`识别完成，共提取 ${items.length} 题，请校对后保存`)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : '识别失败'
+      if (msg !== 'The user aborted a request.') setError(msg)
+    } finally {
+      setLoading(false)
+      setProgress(null)
+      abortRef.current = null
+    }
+  }
+
+  // 从文件夹导入：读取其中的 MD/文本 + 本地图片，文本走文本识别、图片走视觉识别，合并入库
+  const doImportFolder = async (files: FileList) => {
+    if (!hasApi) {
+      toast('请先在「设置」中配置 API Key', 'err')
+      return
+    }
+    if (files.length === 0) return
+    setError('')
+    setLoading(true)
+    setResults([])
+    setSelected(new Set())
+    setProgress(null)
+    setSourceLabel('文件夹导入')
+    const controller = new AbortController()
+    abortRef.current = controller
+    try {
+      const items = await extractFolderBatched(settings.api, Array.from(files), {
         signal: controller.signal,
         onProgress: (done, total) => setProgress({ done, total }),
       })
@@ -251,6 +287,14 @@ export default function AiGenerate({ go }: { go: (page: string) => void }) {
           >
             <IconDownload size={16} /> 从 Markdown 文件导入（AI 识别）
           </button>
+          <button
+            className="btn btn-ghost"
+            disabled={loading}
+            onClick={() => folderRef.current?.click()}
+            style={{ width: '100%' }}
+          >
+            <IconFolder size={16} /> 从文件夹导入（含图片识别）
+          </button>
           <input
             ref={fileRef}
             type="file"
@@ -262,8 +306,25 @@ export default function AiGenerate({ go }: { go: (page: string) => void }) {
               e.target.value = ''
             }}
           />
+          <input
+            ref={folderRef}
+            type="file"
+            style={{ display: 'none' }}
+            {...({ webkitdirectory: '', multiple: true } as object)}
+            onChange={(e) => {
+              const fs = e.target.files
+              if (fs && fs.length) doImportFolder(fs)
+              e.target.value = ''
+            }}
+          />
           <div style={{ fontSize: 11.5, color: 'var(--text-faint)', lineHeight: 1.6 }}>
             模型：{settings.api.model || 'deepseek-chat'}。生成内容建议人工校对后使用。
+            {settings.api.baseUrl.includes('deepseek') && (
+              <>
+                <br />
+                图片识别需要支持视觉的模型（如 mimo-v2.5 / gpt-4o），DeepSeek 仅能识别文本。
+              </>
+            )}
           </div>
         </div>
 
@@ -272,14 +333,14 @@ export default function AiGenerate({ go }: { go: (page: string) => void }) {
             <div className="card panel" style={{ textAlign: 'center', padding: 40 }}>
               <div style={{ fontSize: 34, marginBottom: 10 }}>🤖</div>
               <div style={{ fontWeight: 700 }}>
-                {sourceLabel.startsWith('MD 导入')
+                {isMdImport
                   ? progress
                     ? `正在识别文档（第 ${progress.done} / ${progress.total} 批）…`
                     : '正在识别文档内容…'
                   : `正在生成 ${categoryDef(category).name} 面试题…`}
               </div>
               <div style={{ color: 'var(--text-faint)', fontSize: 12.5, marginTop: 6 }}>
-                {sourceLabel.startsWith('MD 导入')
+                {isMdImport
                   ? '长文档已分批处理，每批识别完成后会更新进度'
                   : 'AI 正在回忆高频考点，请稍候'}
               </div>
@@ -302,8 +363,8 @@ export default function AiGenerate({ go }: { go: (page: string) => void }) {
               <div style={{ color: 'var(--text-dim)', fontSize: 13, marginBottom: 10 }}>{error}</div>
               <button
                 className="btn btn-ghost btn-sm"
-                // MD 导入失败时重新选择文件，生成失败时重新生成
-                onClick={() => (sourceLabel.startsWith('MD 导入') ? fileRef.current?.click() : doGenerate())}
+                // MD/文件夹导入失败时重新选择文件，生成失败时重新生成
+                onClick={() => (isMdImport ? folderRef.current?.click() : doGenerate())}
               >
                 重试
               </button>
