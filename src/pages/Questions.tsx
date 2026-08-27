@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '../store/useStore'
 import { CATEGORIES, categoryDef, type Question } from '../types'
 import { isDue } from '../lib/sm2'
+import { generateAnswer } from '../lib/ai'
 import QuestionForm from '../components/QuestionForm'
 import Markdown from '../components/Markdown'
 import { StatusBadge, DiffBadge } from '../components/badges'
@@ -15,6 +16,7 @@ import {
   IconDownload,
   IconFlag,
   IconCheck,
+  IconSpark,
 } from '../components/icons'
 import { useToast } from '../components/Toast'
 import dayjs from 'dayjs'
@@ -24,14 +26,57 @@ type ReviewFilter = Question['review']['status']
 
 export default function Questions() {
   const questions = useStore((s) => s.questions)
+  const settings = useStore((s) => s.settings)
   const deleteQuestion = useStore((s) => s.deleteQuestion)
   const toggleFavorite = useStore((s) => s.toggleFavorite)
   const toggleImportant = useStore((s) => s.toggleImportant)
   const batchDelete = useStore((s) => s.batchDelete)
   const batchSet = useStore((s) => s.batchSet)
+  const updateQuestion = useStore((s) => s.updateQuestion)
   const importPreset = useStore((s) => s.importPreset)
   const presetLoaded = useStore((s) => s.settings.presetLoaded)
   const toast = useToast().toast
+
+  const hasApi = !!settings.api.apiKey.trim()
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiError, setAiError] = useState('')
+  const [aiResult, setAiResult] = useState('')
+  const aiAbortRef = useRef<AbortController | null>(null)
+
+  const genAiAnswer = async () => {
+    if (!detail || !hasApi) return
+    aiAbortRef.current?.abort()
+    const controller = new AbortController()
+    aiAbortRef.current = controller
+    setAiLoading(true)
+    setAiError('')
+    try {
+      const text = await generateAnswer(
+        settings.api,
+        {
+          title: detail.title,
+          answer: detail.answer,
+          category: categoryDef(detail.category).name,
+        },
+        controller.signal,
+      )
+      setAiResult(text)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : '生成失败'
+      if (msg !== 'The user aborted a request.') setAiError(msg)
+    } finally {
+      setAiLoading(false)
+    }
+  }
+
+  const applyAiAnswer = () => {
+    if (!detail || !aiResult) return
+    updateQuestion(detail.id, {
+      answer: `${detail.answer}\n\n---\n\n### 🤖 AI 补充答案\n\n${aiResult}`,
+    })
+    setAiResult('')
+    toast('AI 补充答案已合并到题库')
+  }
 
   const [search, setSearch] = useState('')
   const [cat, setCat] = useState('all')
@@ -44,6 +89,14 @@ export default function Questions() {
   const [detail, setDetail] = useState<Question | null>(null)
   const [selectMode, setSelectMode] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
+
+  // 切换查看的题目时，重置 AI 生成状态
+  useEffect(() => {
+    aiAbortRef.current?.abort()
+    setAiLoading(false)
+    setAiError('')
+    setAiResult('')
+  }, [detail?.id])
 
   const allTags = useMemo(() => {
     const map = new Map<string, number>()
@@ -454,6 +507,66 @@ export default function Questions() {
                 ))}
                 {detail.source && <span className="q-meta-text">来源：{detail.source}</span>}
                 <span className="q-meta-text">创建于 {dayjs(detail.createdAt).format('YYYY-MM-DD')}</span>
+              </div>
+
+              {/* AI 生成补充答案 */}
+              <div
+                style={{
+                  borderTop: '1px solid var(--border)',
+                  paddingTop: 14,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 10,
+                }}
+              >
+                {!aiLoading && !aiResult && !aiError && (
+                  <button className="btn btn-ghost btn-sm" onClick={genAiAnswer} disabled={!hasApi} style={{ alignSelf: 'flex-start' }}>
+                    <IconSpark size={15} /> AI 生成补充答案
+                    {!hasApi && '（未配置 Key）'}
+                  </button>
+                )}
+                {!hasApi && (
+                  <div style={{ fontSize: 12, color: 'var(--text-faint)' }}>
+                    未配置 API Key，可在「设置 → AI 接口」中配置后使用
+                  </div>
+                )}
+                {aiLoading && (
+                  <div
+                    style={{ fontSize: 13, color: 'var(--text-dim)', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
+                    onClick={() => aiAbortRef.current?.abort()}
+                  >
+                    <IconSpark size={15} /> AI 正在生成补充答案…（点击取消）
+                  </div>
+                )}
+                {aiError && (
+                  <div style={{ fontSize: 12.5, color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <span>{aiError}</span>
+                    <button className="btn btn-ghost btn-sm" onClick={genAiAnswer}>
+                      重试
+                    </button>
+                  </div>
+                )}
+                {aiResult && (
+                  <>
+                    <div className="card" style={{ padding: 14, background: 'var(--accent-soft)' }}>
+                      <div style={{ fontWeight: 800, fontSize: 13.5, marginBottom: 8, color: 'var(--accent)' }}>
+                        🤖 AI 补充答案
+                      </div>
+                      <Markdown content={aiResult} />
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <button className="btn btn-primary btn-sm" onClick={applyAiAnswer}>
+                        <IconCheck size={14} /> 合并到题库
+                      </button>
+                      <button className="btn btn-ghost btn-sm" onClick={genAiAnswer}>
+                        重新生成
+                      </button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => setAiResult('')}>
+                        放弃
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
             <div className="modal-foot">

@@ -130,3 +130,63 @@ export async function generateQuestions(
   if (parsed.length === 0) throw new Error('没有解析到有效题目')
   return parsed
 }
+
+/** 针对单道题目，基于现有答案生成更完整、更适合复习背诵的参考答案（markdown） */
+export async function generateAnswer(
+  config: ApiConfig,
+  q: { title: string; answer: string; category: string },
+  signal?: AbortSignal,
+): Promise<string> {
+  const baseUrl = (config.baseUrl || 'https://api.deepseek.com').replace(/\/+$/, '')
+
+  const systemPrompt = `你是一名资深的 Java 后端面试官，精通 Java 后端面试八股文知识点。
+你会收到一道面试题及其现有参考答案，请输出一份更完整、更清晰、更适合复习背诵的参考答案。
+要求：
+- 使用 markdown 组织，要点化、分点清晰，必要时给出简短的代码示例
+- 覆盖关键知识点，补充容易被忽略的考点和常见追问
+- 只输出答案内容本身，不要输出题目标题，不要输出任何多余说明`
+
+  const userPrompt = `题目（分类：${q.category}）：${q.title}\n\n现有答案：\n${q.answer || '（暂无）'}\n\n请生成完善后的参考答案：`
+
+  let resp: Response
+  try {
+    resp = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${config.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: config.model || 'deepseek-chat',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        temperature: 0.5,
+        stream: false,
+      }),
+      signal,
+    })
+  } catch (e) {
+    if (signal?.aborted) throw e
+    throw new Error(
+      '网络请求失败。若提示跨域(CORS)，说明该接口不允许浏览器直连，请改用支持浏览器调用的服务，或通过本地代理转发',
+    )
+  }
+
+  if (!resp.ok) {
+    let msg = `请求失败（HTTP ${resp.status}）`
+    try {
+      const err = await resp.json()
+      msg = err?.error?.message ?? msg
+    } catch {
+      // ignore
+    }
+    throw new Error(msg)
+  }
+
+  const data = await resp.json()
+  const content: string = data?.choices?.[0]?.message?.content ?? ''
+  if (!content) throw new Error('AI 没有返回内容')
+  return content.trim()
+}
