@@ -1194,6 +1194,20 @@ h1, h2, h3, h4 {
     padding: 14px 14px 90px;
     overflow: visible;
   }
+  /* 移动端恢复原生 select 下拉，修复 appearance:none 导致点击无反应 */
+  .select {
+    appearance: auto;
+    background-image: none;
+    padding-right: 13px;
+  }
+  /* 移动端页面宽度约束 */
+  .page {
+    max-width: 100%;
+  }
+  /* 移动端表单字段不要撑满 */
+  .field {
+    max-width: 100%;
+  }
   .topbar {
     display: flex;
     align-items: center;
