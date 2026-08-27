@@ -127,7 +127,7 @@ export default function AiGenerate({ go }: { go: (page: string) => void }) {
             尚未配置 AI 接口
           </div>
           <div style={{ color: 'var(--text-dim)', fontSize: 13, marginBottom: 12 }}>
-            需要你自己的 API Key（支持 DeepSeek / OpenAI 等兼容接口）。Key 只存在本地浏览器，不会上传云端；
+            需要你自己的 API Key（支持 DeepSeek / OpenAI / MiMo 等兼容接口）。Key 只存在本地浏览器，不会上传云端；
             仅在点击「生成」时才将题目需求发送给你配置的接口。
           </div>
           <button className="btn btn-primary" onClick={() => go('settings')}>

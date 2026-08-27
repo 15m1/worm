@@ -3,6 +3,21 @@ import { useStore } from '../store/useStore'
 import { IconDownload, IconUpload } from '../components/icons'
 import { useToast } from '../components/Toast'
 
+const PRESETS = [
+  { id: 'deepseek', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com', model: 'deepseek-chat' },
+  { id: 'mimo', name: 'MiMo（小米）', baseUrl: 'https://api.xiaomimimo.com/v1', model: 'mimo-v2.5-pro' },
+  { id: 'openai', name: 'OpenAI', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
+  { id: 'custom', name: '自定义', baseUrl: '', model: '' },
+] as const
+
+function detectProvider(url: string): string {
+  const u = url.trim()
+  if (u.includes('xiaomimimo.com')) return 'mimo'
+  if (u.includes('deepseek.com')) return 'deepseek'
+  if (u.includes('openai.com')) return 'openai'
+  return 'custom'
+}
+
 export default function Settings() {
   const settings = useStore((s) => s.settings)
   const updateSettings = useStore((s) => s.updateSettings)
@@ -17,6 +32,17 @@ export default function Settings() {
   const [apiKey, setApiKey] = useState(settings.api.apiKey)
   const [baseUrl, setBaseUrl] = useState(settings.api.baseUrl)
   const [model, setModel] = useState(settings.api.model)
+  const [provider, setProvider] = useState(() => detectProvider(settings.api.baseUrl))
+
+  const applyProvider = (id: string) => {
+    const p = PRESETS.find((x) => x.id === id)
+    if (!p) return
+    setProvider(id)
+    if (id !== 'custom') {
+      setBaseUrl(p.baseUrl)
+      setModel(p.model)
+    }
+  }
 
   const saveApi = () => {
     updateSettings({
@@ -97,15 +123,35 @@ export default function Settings() {
         <div className="set-title">AI 接口</div>
         <div className="set-row">
           <div className="set-info">
+            <div className="set-label">服务商</div>
+            <div className="set-desc">选择后自动填入接口地址与模型（兼容 OpenAI 协议）</div>
+          </div>
+          <div className="seg">
+            {PRESETS.map((p) => (
+              <button
+                key={p.id}
+                className={provider === p.id ? 'active' : ''}
+                onClick={() => applyProvider(p.id)}
+              >
+                {p.name}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="set-row">
+          <div className="set-info">
             <div className="set-label">Base URL</div>
-            <div className="set-desc">OpenAI 兼容接口地址，默认 DeepSeek</div>
+            <div className="set-desc">OpenAI 兼容接口地址</div>
           </div>
           <input
             className="input"
             style={{ width: 260 }}
             value={baseUrl}
-            onChange={(e) => setBaseUrl(e.target.value)}
-            placeholder="https://api.deepseek.com"
+            onChange={(e) => {
+              setBaseUrl(e.target.value)
+              setProvider(detectProvider(e.target.value))
+            }}
+            placeholder="https://api.xiaomimimo.com/v1"
           />
         </div>
         <div className="set-row">
@@ -125,7 +171,7 @@ export default function Settings() {
         <div className="set-row">
           <div className="set-info">
             <div className="set-label">模型</div>
-            <div className="set-desc">如 deepseek-chat / gpt-4o-mini 等</div>
+            <div className="set-desc">如 deepseek-chat / mimo-v2.5-pro / gpt-4o-mini</div>
           </div>
           <input
             className="input"
