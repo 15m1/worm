@@ -86,6 +86,7 @@ export default function AiGenerate({ go }: { go: (page: string) => void }) {
         isPreset: false,
         isFavorite: false,
         wrong: false,
+        important: false,
         createdAt: Date.now(),
         updatedAt: Date.now(),
         review: {

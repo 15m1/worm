@@ -410,6 +410,7 @@ export function buildPresetQuestions(): Question[] {
     isPreset: true,
     isFavorite: false,
     wrong: false,
+    important: false,
     createdAt: now,
     updatedAt: now,
     review: newReviewState(),

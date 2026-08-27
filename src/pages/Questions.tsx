@@ -13,17 +13,22 @@ import {
   IconTrash,
   IconClose,
   IconDownload,
+  IconFlag,
+  IconCheck,
 } from '../components/icons'
 import { useToast } from '../components/Toast'
 import dayjs from 'dayjs'
 
-type StatusFilter = 'all' | 'due' | 'favorite' | 'wrong' | ReviewFilter
+type StatusFilter = 'all' | 'due' | 'favorite' | 'wrong' | 'important' | ReviewFilter
 type ReviewFilter = Question['review']['status']
 
 export default function Questions() {
   const questions = useStore((s) => s.questions)
   const deleteQuestion = useStore((s) => s.deleteQuestion)
   const toggleFavorite = useStore((s) => s.toggleFavorite)
+  const toggleImportant = useStore((s) => s.toggleImportant)
+  const batchDelete = useStore((s) => s.batchDelete)
+  const batchSet = useStore((s) => s.batchSet)
   const importPreset = useStore((s) => s.importPreset)
   const presetLoaded = useStore((s) => s.settings.presetLoaded)
   const toast = useToast().toast
@@ -31,10 +36,25 @@ export default function Questions() {
   const [search, setSearch] = useState('')
   const [cat, setCat] = useState('all')
   const [status, setStatus] = useState<StatusFilter>('all')
+  const [tag, setTag] = useState('')
+  const [source, setSource] = useState('')
   const [sortBy, setSortBy] = useState<'due' | 'new' | 'cat'>('due')
   const [editing, setEditing] = useState<Question | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [detail, setDetail] = useState<Question | null>(null)
+  const [selectMode, setSelectMode] = useState(false)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+
+  const allTags = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const q of questions) for (const t of q.tags) map.set(t, (map.get(t) ?? 0) + 1)
+    return Array.from(map.entries()).sort((a, b) => b[1] - a[1]).slice(0, 12)
+  }, [questions])
+
+  const allSources = useMemo(() => {
+    const set = new Set(questions.map((q) => q.source).filter(Boolean))
+    return Array.from(set) as string[]
+  }, [questions])
 
   const filtered = useMemo(() => {
     let list = questions
@@ -42,7 +62,10 @@ export default function Questions() {
     if (status === 'due') list = list.filter((q) => isDue(q))
     else if (status === 'favorite') list = list.filter((q) => q.isFavorite)
     else if (status === 'wrong') list = list.filter((q) => q.wrong)
+    else if (status === 'important') list = list.filter((q) => q.important)
     else if (status !== 'all') list = list.filter((q) => q.review.status === status)
+    if (tag) list = list.filter((q) => q.tags.includes(tag))
+    if (source) list = list.filter((q) => q.source === source)
     if (search.trim()) {
       const kw = search.trim().toLowerCase()
       list = list.filter(
@@ -66,7 +89,7 @@ export default function Questions() {
       arr.sort((a, b) => a.category.localeCompare(b.category))
     }
     return arr
-  }, [questions, cat, status, search, sortBy])
+  }, [questions, cat, status, tag, source, search, sortBy])
 
   const doDelete = (q: Question) => {
     if (confirm(`确定删除「${q.title}」？此操作不可恢复。`)) {
@@ -76,6 +99,31 @@ export default function Questions() {
     }
   }
 
+  const toggleSelect = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const toggleSelectAll = () => {
+    setSelected((prev) =>
+      prev.size === filtered.length ? new Set() : new Set(filtered.map((q) => q.id)),
+    )
+  }
+
+  const doBatch = (fn: () => void, msg: string) => {
+    if (selected.size === 0) {
+      toast('请先选择题目', 'err')
+      return
+    }
+    fn()
+    toast(msg)
+    setSelected(new Set())
+  }
+
   return (
     <div className="page">
       <div className="page-head">
@@ -83,7 +131,16 @@ export default function Questions() {
           <div className="page-title">题库</div>
           <div className="page-desc">共 {questions.length} 题，管理你的 Java 后端面试知识库</div>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <button
+            className={`btn ${selectMode ? 'btn-primary' : 'btn-ghost'}`}
+            onClick={() => {
+              setSelectMode(!selectMode)
+              setSelected(new Set())
+            }}
+          >
+            {selectMode ? `完成（已选 ${selected.size}）` : '批量操作'}
+          </button>
           <button
             className="btn btn-ghost"
             onClick={() => {
@@ -109,6 +166,21 @@ export default function Questions() {
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
+        {allSources.length > 0 && (
+          <select
+            className="select"
+            style={{ width: 120 }}
+            value={source}
+            onChange={(e) => setSource(e.target.value)}
+          >
+            <option value="">全部来源</option>
+            {allSources.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        )}
         <select
           className="select"
           style={{ width: 130 }}
@@ -142,6 +214,7 @@ export default function Questions() {
           [
             ['all', '全部状态'],
             ['due', '待复习'],
+            ['important', `🚩 重点题（${questions.filter((q) => q.important).length}）`],
             ['wrong', `❌ 错题本（${questions.filter((q) => q.wrong).length}）`],
             ['new', '待学习'],
             ['learning', '学习中'],
@@ -160,6 +233,24 @@ export default function Questions() {
         ))}
       </div>
 
+      {allTags.length > 0 && (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+          <span style={{ fontSize: 12, color: 'var(--text-faint)', alignSelf: 'center' }}>标签：</span>
+          <button className={`chip ${!tag ? 'active' : ''}`} onClick={() => setTag('')}>
+            全部
+          </button>
+          {allTags.map(([t, n]) => (
+            <button
+              key={t}
+              className={`chip ${tag === t ? 'active' : ''}`}
+              onClick={() => setTag(tag === t ? '' : t)}
+            >
+              #{t}（{n}）
+            </button>
+          ))}
+        </div>
+      )}
+
       {filtered.length === 0 ? (
         <div className="card empty">
           <div className="empty-icon">📚</div>
@@ -173,7 +264,22 @@ export default function Questions() {
       ) : (
         <div className="q-list">
           {filtered.map((q) => (
-            <div className="card card-hover q-item" key={q.id} onClick={() => setDetail(q)}>
+            <div
+              className={`card card-hover q-item${selectMode && selected.has(q.id) ? ' q-item-selected' : ''}`}
+              key={q.id}
+              onClick={() => (selectMode ? toggleSelect(q.id) : setDetail(q))}
+            >
+              {selectMode && (
+                <span
+                  className={`q-check${selected.has(q.id) ? ' on' : ''}`}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    toggleSelect(q.id)
+                  }}
+                >
+                  {selected.has(q.id) && <IconCheck size={14} />}
+                </span>
+              )}
               <span
                 style={{
                   width: 4,
@@ -184,7 +290,9 @@ export default function Questions() {
                 }}
               />
               <div className="q-main">
-                <div className="q-title">{q.title}</div>
+                <div className="q-title">
+                  {q.important && <span className="q-important">🚩</span>} {q.title}
+                </div>
                 <div className="q-meta">
                   <span className="tag" style={{ background: `${categoryDef(q.category).color}22` }}>
                     {categoryDef(q.category).name}
@@ -192,6 +300,7 @@ export default function Questions() {
                   <DiffBadge d={q.difficulty} />
                   <StatusBadge q={q} />
                   {q.wrong && <span className="badge badge-due">错题</span>}
+                  {q.important && <span className="badge badge-important">重点</span>}
                   {q.review.lastReviewedAt && (
                     <span className="q-meta-text">
                       上次 {dayjs(q.review.lastReviewedAt).format('M/D')}
@@ -199,41 +308,92 @@ export default function Questions() {
                   )}
                 </div>
               </div>
-              <div className="q-actions">
-                <button
-                  className={`btn-icon ${q.isFavorite ? 'q-fav' : ''}`}
-                  title={q.isFavorite ? '取消收藏' : '收藏'}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    toggleFavorite(q.id)
-                  }}
-                >
-                  <IconStar size={17} />
-                </button>
-                <button
-                  className="btn-icon"
-                  title="编辑"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setEditing(q)
-                    setShowForm(true)
-                  }}
-                >
-                  <IconEdit size={17} />
-                </button>
-                <button
-                  className="btn-icon"
-                  title="删除"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    doDelete(q)
-                  }}
-                >
-                  <IconTrash size={17} />
-                </button>
-              </div>
+              {!selectMode && (
+                <div className="q-actions">
+                  <button
+                    className={`btn-icon ${q.important ? 'q-important-active' : ''}`}
+                    title={q.important ? '取消重点' : '标记重点'}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      toggleImportant(q.id)
+                    }}
+                  >
+                    <IconFlag size={17} />
+                  </button>
+                  <button
+                    className={`btn-icon ${q.isFavorite ? 'q-fav' : ''}`}
+                    title={q.isFavorite ? '取消收藏' : '收藏'}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      toggleFavorite(q.id)
+                    }}
+                  >
+                    <IconStar size={17} />
+                  </button>
+                  <button
+                    className="btn-icon"
+                    title="编辑"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setEditing(q)
+                      setShowForm(true)
+                    }}
+                  >
+                    <IconEdit size={17} />
+                  </button>
+                  <button
+                    className="btn-icon"
+                    title="删除"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      doDelete(q)
+                    }}
+                  >
+                    <IconTrash size={17} />
+                  </button>
+                </div>
+              )}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* 批量操作栏 */}
+      {selectMode && (
+        <div className="batch-bar">
+          <button className="btn btn-ghost btn-sm" onClick={toggleSelectAll}>
+            {selected.size === filtered.length ? '取消全选' : '全选'}
+          </button>
+          <span className="q-meta-text">{selected.size} 项</span>
+          <div style={{ flex: 1 }} />
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={() => doBatch(() => batchSet(Array.from(selected), { isFavorite: true }), `已收藏 ${selected.size} 题`)}
+          >
+            收藏
+          </button>
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={() => doBatch(() => batchSet(Array.from(selected), { important: true }), `已标记 ${selected.size} 题为重点`)}
+          >
+            🚩 标记重点
+          </button>
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={() => doBatch(() => batchSet(Array.from(selected), { wrong: true }), `已加入错题本 ${selected.size} 题`)}
+          >
+            加入错题本
+          </button>
+          <button
+            className="btn btn-danger btn-sm"
+            onClick={() =>
+              doBatch(() => {
+                if (confirm(`确定删除选中的 ${selected.size} 道题？此操作不可恢复。`)) batchDelete(Array.from(selected))
+              }, `已删除 ${selected.size} 题`)
+            }
+          >
+            <IconTrash size={15} /> 删除
+          </button>
         </div>
       )}
 
@@ -262,8 +422,16 @@ export default function Questions() {
                 <DiffBadge d={detail.difficulty} />
                 <StatusBadge q={detail} />
                 {detail.wrong && <span className="badge badge-due">错题</span>}
+                {detail.important && <span className="badge badge-important">重点</span>}
               </div>
               <div style={{ display: 'flex', gap: 4 }}>
+                <button
+                  className={`btn-icon ${detail.important ? 'q-important-active' : ''}`}
+                  title={detail.important ? '取消重点' : '标记重点'}
+                  onClick={() => toggleImportant(detail.id)}
+                >
+                  <IconFlag size={17} />
+                </button>
                 <button
                   className={`btn-icon ${detail.isFavorite ? 'q-fav' : ''}`}
                   onClick={() => toggleFavorite(detail.id)}

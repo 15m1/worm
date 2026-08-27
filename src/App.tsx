@@ -4,6 +4,7 @@ import { ToastProvider } from './components/Toast'
 import Dashboard from './pages/Dashboard'
 import Questions from './pages/Questions'
 import Review from './pages/Review'
+import Quiz from './pages/Quiz'
 import AiGenerate from './pages/AiGenerate'
 import Settings from './pages/Settings'
 import {
@@ -14,15 +15,17 @@ import {
   IconSettings,
   IconSun,
   IconMoon,
+  IconTarget,
 } from './components/icons'
 import { isDue } from './lib/sm2'
 
-type Page = 'dashboard' | 'questions' | 'review' | 'ai' | 'settings'
+type Page = 'dashboard' | 'questions' | 'review' | 'quiz' | 'ai' | 'settings'
 
 const NAV: { id: Page; label: string; icon: (s: number) => ReactElement }[] = [
   { id: 'dashboard', label: '看板', icon: (s) => <IconDashboard size={s} /> },
   { id: 'questions', label: '题库', icon: (s) => <IconLibrary size={s} /> },
   { id: 'review', label: '复习', icon: (s) => <IconReview size={s} /> },
+  { id: 'quiz', label: '自测', icon: (s) => <IconTarget size={s} /> },
   { id: 'ai', label: 'AI 生成', icon: (s) => <IconSpark size={s} /> },
   { id: 'settings', label: '设置', icon: (s) => <IconSettings size={s} /> },
 ]
@@ -131,6 +134,7 @@ function Shell() {
             {page === 'dashboard' && <Dashboard go={go} />}
             {page === 'questions' && <Questions />}
             {page === 'review' && <Review go={go} />}
+            {page === 'quiz' && <Quiz />}
             {page === 'ai' && <AiGenerate go={go} />}
             {page === 'settings' && <Settings />}
           </>

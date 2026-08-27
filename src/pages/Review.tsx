@@ -12,16 +12,16 @@ export default function Review({ go }: { go: (page: string) => void }) {
   const reviewScope = useStore((s) => s.reviewScope)
   const setReviewScope = useStore((s) => s.setReviewScope)
 
-  const [scope, setScope] = useState<'all' | 'wrong'>(reviewScope)
+  const [scope, setScope] = useState<'all' | 'wrong' | 'important'>(reviewScope)
   const [cat, setCat] = useState('all')
   const [queue, setQueue] = useState<Question[] | null>(null)
   const [index, setIndex] = useState(0)
   const [revealed, setRevealed] = useState(false)
   const [summary, setSummary] = useState<Record<Rating, number> | null>(null)
 
-  // 看板「复习错题」跳转时带入 wrong 范围，进入后复位
+  // 看板「复习错题/重点题」跳转时带入对应范围，进入后复位
   useEffect(() => {
-    if (reviewScope === 'wrong') setScope('wrong')
+    if (reviewScope !== 'all') setScope(reviewScope)
     setReviewScope('all')
   }, [reviewScope, setReviewScope])
 
@@ -39,7 +39,14 @@ export default function Review({ go }: { go: (page: string) => void }) {
         .sort((a, b) => (a.review.lastReviewedAt ?? 0) - (b.review.lastReviewedAt ?? 0)),
     [questions],
   )
-  const base = scope === 'wrong' ? wrongList : due
+  const importantList = useMemo(
+    () =>
+      questions
+        .filter((q) => q.important)
+        .sort((a, b) => a.review.dueAt - b.review.dueAt),
+    [questions],
+  )
+  const base = scope === 'wrong' ? wrongList : scope === 'important' ? importantList : due
   const reviewTarget = useMemo(
     () => (cat === 'all' ? base : base.filter((q) => q.category === cat)),
     [base, cat],
@@ -185,15 +192,21 @@ export default function Review({ go }: { go: (page: string) => void }) {
             <button className={scope === 'all' ? 'active' : ''} onClick={() => setScope('all')}>
               待复习（{due.length}）
             </button>
+            <button className={scope === 'important' ? 'active' : ''} onClick={() => setScope('important')}>
+              🚩 重点题（{importantList.length}）
+            </button>
             <button className={scope === 'wrong' ? 'active' : ''} onClick={() => setScope('wrong')}>
               ❌ 错题本（{wrongList.length}）
             </button>
           </div>
         </div>
         <div style={{ fontSize: 12, color: 'var(--text-faint)', marginBottom: 12 }}>
-          {scope === 'all'
-            ? '按记忆曲线到期的题目，答错会自动进入错题本'
-            : '复习中选「忘了/模糊」自动收集的错题，答对后自动移出'}
+          {scope === 'all' &&
+            '按记忆曲线到期的题目，答错会自动进入错题本'}
+          {scope === 'important' &&
+            '已标记 🚩 重点的题目（含未到期），面试前集中复习'}
+          {scope === 'wrong' &&
+            '复习中选「忘了/模糊」自动收集的错题，答对后自动移出'}
         </div>
         <div className="panel-title" style={{ fontSize: 12.5 }}>按分类筛选</div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -220,7 +233,8 @@ export default function Review({ go }: { go: (page: string) => void }) {
       {reviewTarget.length > 0 ? (
         <div className="card panel">
           <div className="panel-title">
-            {scope === 'wrong' ? '错题本' : '待复习'} {reviewTarget.length} 题
+            {scope === 'wrong' ? '错题本' : scope === 'important' ? '重点题' : '待复习'}{' '}
+            {reviewTarget.length} 题
           </div>
           <button className="btn btn-primary" style={{ width: '100%' }} onClick={() => start(reviewTarget)}>
             <IconReview size={18} /> 开始复习这 {reviewTarget.length} 题
@@ -246,6 +260,7 @@ export default function Review({ go }: { go: (page: string) => void }) {
                     {scope === 'wrong' && q.review.lastReviewedAt && (
                       <> · 最近答错 {dayjs(q.review.lastReviewedAt).format('M/D')}</>
                     )}
+                    {scope === 'important' && q.important && ' · 🚩 重点'}
                   </div>
                 </div>
               </div>
@@ -259,12 +274,14 @@ export default function Review({ go }: { go: (page: string) => void }) {
         </div>
       ) : (
         <div className="card empty">
-          <div className="empty-icon">{scope === 'wrong' ? '🎉' : '✅'}</div>
+          <div className="empty-icon">{scope === 'wrong' ? '🎉' : scope === 'important' ? '🚩' : '✅'}</div>
           <div className="empty-title">
-            {scope === 'wrong' ? '错题本空了' : '今日复习全部完成！'}
+            {scope === 'wrong' ? '错题本空了' : scope === 'important' ? '还没有重点题' : '今日复习全部完成！'}
           </div>
           {scope === 'wrong' ? (
             <div>没有错题，继续保持！答错的题会自动出现在这里</div>
+          ) : scope === 'important' ? (
+            <div>在题库里给高频题打上「🚩 重点」标记，面试前集中冲刺</div>
           ) : (
             <>
               <div>休息一下，或学点新题充实题库</div>

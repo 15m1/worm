@@ -63,6 +63,43 @@ export function getCategoryColor(id: string): string {
   return categoryDef(id).color
 }
 
+// 复习及时率：过去 windowDays 天内，到期后 24h 内完成复习的比例
+export function timelyRate(reviewLogs: ReviewLog[], windowDays = 30): { rate: number; timely: number; total: number } {
+  const cutoff = Date.now() - windowDays * 86400000
+  const logs = reviewLogs.filter((l) => typeof l.dueAt === 'number' && l.reviewedAt >= cutoff)
+  if (logs.length === 0) return { rate: 0, timely: 0, total: 0 }
+  const timely = logs.filter((l) => (l.reviewedAt - (l.dueAt ?? 0)) <= 86400000).length
+  return { rate: Math.round((timely / logs.length) * 100), timely, total: logs.length }
+}
+
+export interface CategoryMastery {
+  id: string
+  name: string
+  color: string
+  total: number
+  mastered: number
+  due: number
+  progress: number // 掌握百分比 0-100
+}
+
+export function categoryMastery(questions: Question[]): CategoryMastery[] {
+  const map = new Map<string, CategoryMastery>()
+  for (const q of questions) {
+    let m = map.get(q.category)
+    if (!m) {
+      const def = categoryDef(q.category)
+      m = { id: q.category, name: def.name, color: def.color, total: 0, mastered: 0, due: 0, progress: 0 }
+      map.set(q.category, m)
+    }
+    m.total++
+    if (q.review.status === 'mastered') m.mastered++
+    if (isDue(q)) m.due++
+  }
+  const out = Array.from(map.values())
+  for (const m of out) m.progress = m.total ? Math.round((m.mastered / m.total) * 100) : 0
+  return out.sort((a, b) => b.total - a.total)
+}
+
 export function masteredCount(questions: Question[]): number {
   return questions.filter((q) => q.review.status === 'mastered').length
 }

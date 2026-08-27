@@ -34,16 +34,20 @@ export interface QuestionDraft {
 
 interface StoreState extends PersistedState {
   hydrated: boolean
-  reviewScope: 'all' | 'wrong' // 复习页初始范围（看板「复习错题」跳转用）
+  reviewScope: 'all' | 'wrong' | 'important' // 复习页初始范围（看板「复习错题/重点题」跳转用）
   // actions
   hydrate: () => Promise<void>
-  setReviewScope: (s: 'all' | 'wrong') => void
+  setReviewScope: (s: 'all' | 'wrong' | 'important') => void
   addQuestion: (draft: QuestionDraft) => string
   addQuestions: (questions: Question[]) => void
   updateQuestion: (id: string, patch: Partial<Question>) => void
   deleteQuestion: (id: string) => void
   toggleFavorite: (id: string) => void
+  toggleImportant: (id: string) => void
   reviewQuestion: (id: string, rating: Rating) => void
+  quizAnswer: (id: string, correct: boolean) => void
+  batchDelete: (ids: string[]) => void
+  batchSet: (ids: string[], patch: Partial<Pick<Question, 'isFavorite' | 'wrong' | 'important'>>) => void
   importPreset: () => number
   updateSettings: (patch: Partial<Settings>) => void
   exportData: () => string
@@ -78,6 +82,7 @@ export const useStore = create<StoreState>((set, get) => {
           questions: (saved.questions ?? []).map((q) => ({
             ...q,
             wrong: q.wrong ?? false, // 兼容旧数据
+            important: q.important ?? false, // 兼容旧数据
             review: { ...newReviewState(), ...(q.review ?? {}) },
           })),
           reviewLogs: saved.reviewLogs ?? [],
@@ -98,6 +103,7 @@ export const useStore = create<StoreState>((set, get) => {
         isPreset: false,
         isFavorite: false,
         wrong: false,
+        important: false,
         createdAt: now,
         updatedAt: now,
         review: newReviewState(),
@@ -141,6 +147,7 @@ export const useStore = create<StoreState>((set, get) => {
     reviewQuestion: (id, rating) => {
       const q = get().questions.find((x) => x.id === id)
       if (!q) return
+      const prevDueAt = q.review.dueAt // 记录到期时间，用于计算复习及时率
       const { state, interval } = applyRating(q, rating)
       const log: ReviewLog = {
         id: uid(),
@@ -148,6 +155,7 @@ export const useStore = create<StoreState>((set, get) => {
         rating,
         reviewedAt: Date.now(),
         interval,
+        dueAt: prevDueAt,
       }
       // 选「忘了/模糊」自动进错题本，答对（记住了/很熟）自动移出错题本
       const wrong = rating === 'again' || rating === 'hard'
@@ -158,6 +166,44 @@ export const useStore = create<StoreState>((set, get) => {
             : x,
         ),
         reviewLogs: [log, ...s.reviewLogs],
+      }))
+      persist()
+    },
+
+    quizAnswer: (id, correct) => {
+      // 测验/自测模式：只更新错题标记，不干扰 SM-2 复习曲线
+      set((s) => ({
+        questions: s.questions.map((x) =>
+          x.id === id ? { ...x, wrong: !correct, updatedAt: Date.now() } : x,
+        ),
+      }))
+      persist()
+    },
+
+    toggleImportant: (id) => {
+      set((s) => ({
+        questions: s.questions.map((q) =>
+          q.id === id ? { ...q, important: !q.important, updatedAt: Date.now() } : q,
+        ),
+      }))
+      persist()
+    },
+
+    batchDelete: (ids) => {
+      const idSet = new Set(ids)
+      set((s) => ({
+        questions: s.questions.filter((q) => !idSet.has(q.id)),
+        reviewLogs: s.reviewLogs.filter((l) => !idSet.has(l.questionId)),
+      }))
+      persist()
+    },
+
+    batchSet: (ids, patch) => {
+      const idSet = new Set(ids)
+      set((s) => ({
+        questions: s.questions.map((q) =>
+          idSet.has(q.id) ? { ...q, ...patch, updatedAt: Date.now() } : q,
+        ),
       }))
       persist()
     },
@@ -208,6 +254,7 @@ export const useStore = create<StoreState>((set, get) => {
             ...newReviewState(),
             ...q,
             wrong: q.wrong ?? false,
+            important: q.important ?? false,
             review: { ...newReviewState(), ...(q.review ?? {}) },
           }))
         const importedSettings = (data.settings ?? {}) as Partial<Settings>

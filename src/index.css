@@ -468,6 +468,10 @@ h1, h2, h3, h4 {
   background: var(--grad);
   color: #fff;
 }
+.badge-important {
+  background: var(--warn);
+  color: #1a1203;
+}
 .badge-due {
   background: var(--danger-soft);
   color: var(--danger);
@@ -806,9 +810,58 @@ h1, h2, h3, h4 {
 .q-fav {
   color: var(--warn);
 }
+.q-important {
+  font-size: 13px;
+}
+.q-important-active {
+  color: var(--warn);
+}
 .q-arrow {
   color: var(--text-faint);
   flex-shrink: 0;
+}
+
+/* 批量选择 */
+.q-item-selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  background: var(--accent-soft);
+}
+.q-check {
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  border: 2px solid var(--border-strong);
+  display: grid;
+  place-items: center;
+  color: #fff;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+.q-check.on {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.batch-bar {
+  position: fixed;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 95;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--glass);
+  backdrop-filter: blur(14px);
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  padding: 10px 14px;
+  box-shadow: var(--shadow-lg);
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: 92vw;
+  animation: popIn 0.22s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 /* ---------- 复习 ---------- */

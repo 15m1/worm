@@ -1,6 +1,16 @@
 import { useMemo } from 'react'
 import { useStore } from '../store/useStore'
-import { buildStudyActivity, currentStreak, categoryDistribution, difficultyDistribution, dueToday, reviewTodayCount, masteredCount } from '../lib/stats'
+import {
+  buildStudyActivity,
+  currentStreak,
+  categoryDistribution,
+  difficultyDistribution,
+  dueToday,
+  reviewTodayCount,
+  masteredCount,
+  timelyRate,
+  categoryMastery,
+} from '../lib/stats'
 import { isDue } from '../lib/sm2'
 import Heatmap from '../components/Heatmap'
 import Donut from '../components/Donut'
@@ -10,6 +20,7 @@ import dayjs from 'dayjs'
 
 export default function Dashboard({ go }: { go: (page: string) => void }) {
   const questions = useStore((s) => s.questions)
+  const reviewLogs = useStore((s) => s.reviewLogs)
   const settings = useStore((s) => s.settings)
   const setReviewScope = useStore((s) => s.setReviewScope)
 
@@ -21,6 +32,16 @@ export default function Dashboard({ go }: { go: (page: string) => void }) {
   const reviewed = useMemo(() => reviewTodayCount(questions), [questions])
   const mastered = useMemo(() => masteredCount(questions), [questions])
   const wrongCount = useMemo(() => questions.filter((q) => q.wrong).length, [questions])
+  const timely = useMemo(() => timelyRate(reviewLogs), [reviewLogs])
+  const mastery = useMemo(() => categoryMastery(questions), [questions])
+  const important = useMemo(() => {
+    const list = questions.filter((q) => q.important)
+    return {
+      count: list.length,
+      mastered: list.filter((q) => q.review.status === 'mastered').length,
+      due: list.filter((q) => isDue(q)).length,
+    }
+  }, [questions])
 
   const dueList = useMemo(
     () =>
@@ -45,6 +66,10 @@ export default function Dashboard({ go }: { go: (page: string) => void }) {
 
   const reviewWrong = () => {
     setReviewScope('wrong')
+    go('review')
+  }
+  const reviewImportant = () => {
+    setReviewScope('important')
     go('review')
   }
 
@@ -88,9 +113,47 @@ export default function Dashboard({ go }: { go: (page: string) => void }) {
           <div className="stat-value danger">{wrongCount}</div>
           <div className="stat-sub">答错自动收集</div>
         </div>
+        <div className="card stat-card">
+          <div className="stat-label">复习及时率</div>
+          <div className="stat-value">{timely.total > 0 ? `${timely.rate}%` : '—'}</div>
+          <div className="stat-sub">近 30 天 · 到期 24h 内完成</div>
+        </div>
       </div>
 
       <div className="dash-grid">
+        <div className="card panel wide">
+          <div className="panel-title">🚩 面试冲刺</div>
+          {important.count === 0 ? (
+            <div className="empty">
+              <div className="empty-title">还没有重点题</div>
+              <div>在题库里给高频题打上「🚩 重点」标记，集中冲刺</div>
+              <button className="btn btn-ghost btn-sm" onClick={() => go('questions')}>
+                去标记重点题
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div className="review-progress">
+                <span style={{ whiteSpace: 'nowrap' }}>
+                  重点题掌握 {important.mastered}/{important.count}
+                </span>
+                <div className="progress-track">
+                  <div
+                    className="progress-fill"
+                    style={{ width: `${Math.round((important.mastered / important.count) * 100)}%` }}
+                  />
+                </div>
+                <span style={{ whiteSpace: 'nowrap' }} className="q-meta-text">
+                  {important.due} 题待复习
+                </span>
+              </div>
+              <button className="btn btn-primary" onClick={reviewImportant}>
+                复习重点题（{important.due} 题待复习）
+              </button>
+            </div>
+          )}
+        </div>
+
         <div className="card panel wide">
           <div className="panel-title">学习热力图（近 20 周）</div>
           <Heatmap activity={activity} />
@@ -99,6 +162,43 @@ export default function Dashboard({ go }: { go: (page: string) => void }) {
         <div className="card panel">
           <div className="panel-title">分类分布</div>
           <Donut data={dist} />
+        </div>
+
+        <div className="card panel">
+          <div className="panel-title">分类掌握度</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, paddingTop: 4 }}>
+            {mastery.map((m) => (
+              <div key={m.id}>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    fontSize: 12.5,
+                    marginBottom: 5,
+                    gap: 8,
+                  }}
+                >
+                  <span style={{ color: 'var(--text-dim)', fontWeight: 600, display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <span className="legend-dot" style={{ background: m.color, borderRadius: 3 }} />
+                    {m.name}
+                  </span>
+                  <span style={{ fontWeight: 700 }}>
+                    {m.progress}%
+                    <span style={{ color: 'var(--text-faint)', fontWeight: 500, marginLeft: 6 }}>
+                      {m.mastered}/{m.total}
+                      {m.due > 0 && <span style={{ color: 'var(--danger)' }}> · {m.due} 到期</span>}
+                    </span>
+                  </span>
+                </div>
+                <div className="progress-track" style={{ height: 8 }}>
+                  <div
+                    className="progress-fill"
+                    style={{ width: `${m.progress}%`, background: m.color, opacity: 0.85 }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
 
         <div className="card panel">

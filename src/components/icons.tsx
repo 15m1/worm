@@ -127,3 +127,18 @@ export const IconCheck = ({ size }: IconProps) => (
     <path d="M20 6 9 17l-5-5" />
   </svg>
 )
+
+export const IconFlag = ({ size }: IconProps) => (
+  <svg {...base(size)}>
+    <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+    <line x1="4" y1="22" x2="4" y2="15" />
+  </svg>
+)
+
+export const IconTarget = ({ size }: IconProps) => (
+  <svg {...base(size)}>
+    <circle cx="12" cy="12" r="9" />
+    <circle cx="12" cy="12" r="5" />
+    <circle cx="12" cy="12" r="1.5" fill="currentColor" />
+  </svg>
+)

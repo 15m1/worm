@@ -52,6 +52,7 @@ export interface Question {
   isPreset: boolean
   isFavorite: boolean
   wrong: boolean // 是否在错题本中（复习选「忘了/模糊」自动加入，答对自动移出）
+  important: boolean // 是否重点题（面试冲刺模式标记）
   createdAt: number
   updatedAt: number
   review: ReviewState
@@ -65,6 +66,7 @@ export interface ReviewLog {
   rating: Rating
   reviewedAt: number
   interval: number
+  dueAt?: number // 该次复习前原到期时间（用于计算复习及时率）
 }
 
 export interface ApiConfig {
