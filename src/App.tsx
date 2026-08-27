@@ -74,7 +74,7 @@ function Shell() {
     document.querySelector('.main')?.scrollTo({ top: 0 })
   }
 
-  const NavItems = ({ compact }: { compact?: boolean }) => (
+  const renderNavItems = (compact?: boolean) => (
     <>
       {NAV.map((n) => (
         <button
@@ -113,7 +113,7 @@ function Shell() {
             <div className="brand-sub">刷题记录 · 间隔复习</div>
           </div>
         </div>
-        <NavItems />
+        {renderNavItems()}
         <div className="sidebar-foot">
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>{themeBtn}</div>
           <div style={{ marginTop: 8 }}>数据仅存本地 · 纯前端 PWA</div>
@@ -150,7 +150,7 @@ function Shell() {
 
       {/* 移动端底部导航 */}
       <nav className="mobile-bottom">
-        <NavItems compact />
+        {renderNavItems(true)}
       </nav>
     </div>
   )

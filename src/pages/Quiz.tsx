@@ -268,8 +268,8 @@ export default function Quiz() {
                 {n} 题
               </button>
             ))}
-            <button className={count === 50 ? 'active' : ''} onClick={() => setCount(50)}>
-              全部
+            <button className={count === pool.length ? 'active' : ''} onClick={() => setCount(pool.length)}>
+              全部（{pool.length}）
             </button>
           </div>
         </div>

@@ -29,9 +29,7 @@ export function currentStreak(activity: DailyActivity, now = dayjs()): number {
   let streak = 0
   let cursor = now
   // 今天还没记录则从昨天开始算
-  if (activity[cursor.format('YYYY-MM-DD')]) {
-    cursor = cursor
-  } else {
+  if (!activity[cursor.format('YYYY-MM-DD')]) {
     cursor = cursor.subtract(1, 'day')
   }
   while (activity[cursor.format('YYYY-MM-DD')]) {
@@ -45,7 +43,7 @@ export function categoryDistribution(questions: Question[]): { name: string; val
   const map = new Map<string, number>()
   for (const q of questions) map.set(q.category, (map.get(q.category) ?? 0) + 1)
   return Array.from(map.entries()).map(([id, value]) => ({
-    name: id,
+    name: categoryDef(id).name, // 显示中文分类名
     value,
     color: getCategoryColor(id),
   }))

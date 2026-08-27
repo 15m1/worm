@@ -363,8 +363,14 @@ export default function AiGenerate({ go }: { go: (page: string) => void }) {
               <div style={{ color: 'var(--text-dim)', fontSize: 13, marginBottom: 10 }}>{error}</div>
               <button
                 className="btn btn-ghost btn-sm"
-                // MD/文件夹导入失败时重新选择文件，生成失败时重新生成
-                onClick={() => (isMdImport ? folderRef.current?.click() : doGenerate())}
+                // MD 文件导入失败时重新选文件，文件夹导入失败时重新选文件夹，生成失败时重新生成
+                onClick={() =>
+                  sourceLabel.startsWith('MD 导入')
+                    ? fileRef.current?.click()
+                    : sourceLabel.startsWith('文件夹导入')
+                      ? folderRef.current?.click()
+                      : doGenerate()
+                }
               >
                 重试
               </button>
