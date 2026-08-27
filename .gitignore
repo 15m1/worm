@@ -17,6 +17,9 @@ dist-ssr
 .env.*
 !.env.example
 
+# 个人使用，不公开 README
+README.md
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
